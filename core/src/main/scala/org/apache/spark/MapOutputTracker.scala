@@ -18,7 +18,6 @@
 package org.apache.spark
 
 import java.io._
-import java.util.Arrays
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.{GZIPInputStream, GZIPOutputStream}
 
@@ -134,7 +133,7 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
    */
   def getMapSizesByExecutorId(shuffleId: Int, reduceId: Int)
       : Seq[(BlockManagerId, Seq[(BlockId, Long)])] = {
-    getMapSizesByExecutorId(shuffleId, reduceId, reduceId + 1)
+    getMapSizesByExecutorId(shuffleId, None, reduceId, reduceId + 1)
   }
 
   /**
@@ -146,13 +145,14 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
    *         and the second item is a sequence of (shuffle block id, shuffle block size) tuples
    *         describing the shuffle blocks that are stored at that block manager.
    */
-  def getMapSizesByExecutorId(shuffleId: Int, startPartition: Int, endPartition: Int)
-      : Seq[(BlockManagerId, Seq[(BlockId, Long)])] = {
+
+  def getMapSizesByExecutorId(shuffleId: Int, mapId: Option[Int], startPartition: Int, endPartition: Int)
+  : Seq[(BlockManagerId, Seq[(BlockId, Long)])] = {
     logDebug(s"Fetching outputs for shuffle $shuffleId, partitions $startPartition-$endPartition")
     val statuses = getStatuses(shuffleId)
     // Synchronize on the returned array because, on the driver, it gets mutated in place
     statuses.synchronized {
-      return MapOutputTracker.convertMapStatuses(shuffleId, startPartition, endPartition, statuses)
+      return MapOutputTracker.convertMapStatuses(shuffleId, mapId, startPartition, endPartition, statuses)
     }
   }
 
@@ -530,12 +530,27 @@ private[spark] object MapOutputTracker extends Logging {
    */
   private def convertMapStatuses(
       shuffleId: Int,
+      mapTaskId: Option[Int],
       startPartition: Int,
       endPartition: Int,
       statuses: Array[MapStatus]): Seq[(BlockManagerId, Seq[(BlockId, Long)])] = {
     assert (statuses != null)
     val splitsByAddress = new HashMap[BlockManagerId, ArrayBuffer[(BlockId, Long)]]
-    for ((status, mapId) <- statuses.zipWithIndex) {
+    if (mapTaskId.isEmpty) {
+      for ((status, mapId) <- statuses.zipWithIndex) {
+        if (status == null) {
+          val errorMessage = s"Missing an output location for shuffle $shuffleId"
+          logError(errorMessage)
+          throw new MetadataFetchFailedException(shuffleId, startPartition, errorMessage)
+        } else {
+          for (part <- startPartition until endPartition) {
+            splitsByAddress.getOrElseUpdate(status.location, ArrayBuffer()) +=
+              ((ShuffleBlockId(shuffleId, mapId, part), status.getSizeForBlock(part)))
+          }
+        }
+      }
+    } else {
+      val status = statuses(mapTaskId.get);
       if (status == null) {
         val errorMessage = s"Missing an output location for shuffle $shuffleId"
         logError(errorMessage)
@@ -543,11 +558,10 @@ private[spark] object MapOutputTracker extends Logging {
       } else {
         for (part <- startPartition until endPartition) {
           splitsByAddress.getOrElseUpdate(status.location, ArrayBuffer()) +=
-            ((ShuffleBlockId(shuffleId, mapId, part), status.getSizeForBlock(part)))
+            ((ShuffleBlockId(shuffleId, mapTaskId.get, part), status.getSizeForBlock(part)))
         }
       }
     }
-
     splitsByAddress.toSeq
   }
 }

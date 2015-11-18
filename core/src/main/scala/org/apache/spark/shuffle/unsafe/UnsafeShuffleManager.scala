@@ -147,10 +147,11 @@ private[spark] class UnsafeShuffleManager(conf: SparkConf) extends ShuffleManage
    */
   override def getReader[K, C](
       handle: ShuffleHandle,
+      mapTaskId: Option[Int],
       startPartition: Int,
       endPartition: Int,
       context: TaskContext): ShuffleReader[K, C] = {
-    sortShuffleManager.getReader(handle, startPartition, endPartition, context)
+    sortShuffleManager.getReader(handle, mapTaskId, startPartition, endPartition, context)
   }
 
   /** Get a writer for a given partition. Called on executors by map tasks. */

@@ -45,6 +45,7 @@ private[spark] trait ShuffleManager {
    */
   def getReader[K, C](
       handle: ShuffleHandle,
+      mapTaskId: Option[Int],
       startPartition: Int,
       endPartition: Int,
       context: TaskContext): ShuffleReader[K, C]

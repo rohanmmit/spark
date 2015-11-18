@@ -29,6 +29,7 @@ import org.apache.spark.util.collection.ExternalSorter
  */
 private[spark] class BlockStoreShuffleReader[K, C](
     handle: BaseShuffleHandle[K, _, C],
+    mapTaskId: Option[Int],
     startPartition: Int,
     endPartition: Int,
     context: TaskContext,
@@ -44,7 +45,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
       context,
       blockManager.shuffleClient,
       blockManager,
-      mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition),
+      mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, mapTaskId, startPartition, endPartition),
       // Note: we use getSizeAsMb when no suffix is provided for backwards compatibility
       SparkEnv.get.conf.getSizeAsMb("spark.reducer.maxSizeInFlight", "48m") * 1024 * 1024)
 
@@ -109,4 +110,5 @@ private[spark] class BlockStoreShuffleReader[K, C](
         aggregatedIter
     }
   }
+
 }

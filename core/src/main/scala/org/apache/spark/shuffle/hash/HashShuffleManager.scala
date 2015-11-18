@@ -48,11 +48,12 @@ private[spark] class HashShuffleManager(conf: SparkConf) extends ShuffleManager 
    */
   override def getReader[K, C](
       handle: ShuffleHandle,
+      mapTaskId: Option[Int],
       startPartition: Int,
       endPartition: Int,
       context: TaskContext): ShuffleReader[K, C] = {
     new BlockStoreShuffleReader(
-      handle.asInstanceOf[BaseShuffleHandle[K, _, C]], startPartition, endPartition, context)
+      handle.asInstanceOf[BaseShuffleHandle[K, _, C]], mapTaskId, startPartition, endPartition, context)
   }
 
   /** Get a writer for a given partition. Called on executors by map tasks. */
